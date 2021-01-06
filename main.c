@@ -1,7 +1,9 @@
 #define STB_IMAGE_IMPLEMENTATION
+#define _CRT_SECURE_NO_WARNINGS
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <GL/glut.h>
 
@@ -13,8 +15,8 @@
 
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
-
-const float VELO = 0.2;
+#define VET_CONST 60
+#define BASE_VET -360
 
 struct image_texture {
     bool contains;
@@ -49,11 +51,31 @@ struct camera {
     float dx, dy, dz;
 };
 
-struct scene* model;
+struct state {
+    bool open_door;
+    bool open_window;
+    unsigned int vet;
+};
 
-struct camera cam = {0, 0.5, -2.5, -2.5, -2.5, -2.5, 1.5, 2.};
+
+struct scene *base, * vent, * door, * windown;
+
+struct state the_state = { false, false, 0 };
+
+struct camera cam = {0, 0.5, -5, -5, -5, -2.5, 1.5, 2.};
 
 const float fov_y = 60.;
+
+void up_vet() {
+    the_state.vet = (the_state.vet + 1) % VET_CONST;
+}
+
+float get_vet() {
+    float valor = the_state.vet / VET_CONST;
+    valor *= BASE_VET;
+    up_vet();
+    return valor;
+}
 
 float* build_array(unsigned int len) {
     return (float*) malloc(sizeof(float) * len);
@@ -211,7 +233,10 @@ struct scene* getScene(const struct aiScene* sc) {
 
 struct scene* import(const char* pFile) {
     const struct aiScene* scene = aiImportFile(pFile,
-        aiProcessPreset_TargetRealtime_Fast);
+        aiProcess_CalcTangentSpace |
+        aiProcess_Triangulate |
+        aiProcess_JoinIdenticalVertices |
+        aiProcess_SortByPType);
     
     struct scene* theScene = getScene(scene);
     aiReleaseImport(scene);
@@ -251,9 +276,14 @@ void drawScene(struct scene* theScene) {
         glVertexPointer(3, GL_FLOAT, 0, vertexArray);
         glNormalPointer(GL_FLOAT, 0, normalArray);
         
+        if (material->image_diffuse.contains) {
+            glBindTexture(GL_TEXTURE_COORD_ARRAY, material->image_diffuse.id);
+        }
+
         glTexCoordPointer(2, GL_FLOAT, 0, uvArray);
 
-        glDrawArrays(GL_TRIANGLES, 0, numVerts);        
+        glDrawArrays(GL_TRIANGLES, 0, numVerts);
+        
         glDisableClientState(GL_VERTEX_ARRAY);
         glDisableClientState(GL_NORMAL_ARRAY);
         glDisableClientState(GL_TEXTURE_COORD_ARRAY); 
@@ -269,7 +299,45 @@ void display(void) {
     gluLookAt(cam.x, cam.y, cam.z, cam.x + cam.dx, cam.dy, cam.z + cam.dz, 0.0f, 1.0f, 0.0f);
 
     glPushMatrix();
-    drawScene(model);
+    drawScene(base);
+    glPopMatrix();
+
+
+    glPushMatrix();
+    
+    glTranslatef(-4.5, 1.268, 1.7);
+
+    float value = get_vet();
+    glRotatef(value, 1., 0., 0.);
+    
+    drawScene(vent);
+
+    glPopMatrix();
+
+
+    glPushMatrix();
+    
+    glTranslatef(-0.283, 0.469, 0.083);
+
+    if (the_state.open_door) {
+        glRotatef(-70., 0., 1., 0.);
+    }
+
+    drawScene(door);
+    
+    glPopMatrix();
+
+
+    glPushMatrix();
+
+    glTranslatef(-1.56, 2.36, 3.62);
+
+    if (the_state.open_door) {
+        glRotatef(50., 1., 0., 0.);
+    }
+
+    drawScene(windown);
+
     glPopMatrix();
 
     glutSwapBuffers();
@@ -308,10 +376,33 @@ void keyboard(unsigned char key, int x, int y) {
         default:
             break;
     }
+
+    glutPostRedisplay();
+}
+
+const char project_dir[] = "C:\\Users\\jmess\\Documents\\Workspace\\UFAL\\CG\\ProjetoFinal\\ProjetoFinal";
+
+char* concat(const char* s1, const char* s2)
+{
+    char* result = malloc(strlen(s1) + strlen(s2) + 1); // +1 for the null-terminator
+    // in real code you would check for errors in malloc here
+    strcpy(result, s1);
+    strcat(result, s2);
+    return result;
 }
 
 void readData() {
-    model = import("C:\\Users\\jmess\\Documents\\CG\\Export OBJ\\cg.obj");
+    char *base_str = concat(project_dir, "\\Assets\\base\\base.dae");
+    base = import(base_str);
+    
+    base_str = concat(project_dir, "\\Assets\\vent\\vent.dae");
+    vent = import(base_str);
+    
+    base_str = concat(project_dir, "\\Assets\\porta\\porta.dae");
+    door = import(base_str);
+    
+    base_str = concat(project_dir, "\\Assets\\janela\\janela.dae");
+    windown = import(base_str);
 }
 
 int main(int argc, char** argv) {
@@ -341,6 +432,7 @@ int main(int argc, char** argv) {
     init();
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
+    glutKeyboardFunc(keyboard);
     glutMainLoop();
 
     return 0;
